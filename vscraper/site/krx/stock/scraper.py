@@ -63,7 +63,6 @@ class KrxExcelScraper(RequestPost):
         }
 
 
-
 class ShortOtp(RequestGet):
     @property
     def url(self):

@@ -159,7 +159,7 @@ class KrxAdjPrice(KrxFinderScraper):
         5          116,500          1  000070   30,956,512,000      270,219           삼양홀딩스       111,000       5,500      4.95
         6           56,300          1  000075      502,884,700        9,140          삼양홀딩스우        53,300       3,000      5.63
         """
-        result = self.post(ind_tp=market, adj_stkprc="N", period_strt_dd=fromdate,
+        result = self.post(ind_tp=market, adj_stkprc="Y", period_strt_dd=fromdate,
                            period_end_dd=todate)
         return pd.DataFrame(result['block1'])
 
@@ -168,9 +168,10 @@ if __name__ == '__main__':
     pd.set_option('display.max_columns', 500)
     pd.set_option('display.width', 1000)
 
-    # _df = KrxListedDetail().fetch('STK', date='20161130')
-    # _df = KrxAdjPrice().fetch('STK', '20161209', '20201209')
-    # _df = KrxListedBase().fetch(market='1001')
-    _df = KrxChangeListed().fetch('STK', '20180101', '20201201')
+    # _df = KrxListedDetail().fetch('STK', date='20201016')
+    _df = KrxAdjPrice().fetch('STK', '20201001', '20201124')
+    # _df = KrxListedBase().fetch(market='1001', date='20201124')
+    # _df2 = KrxListedBase().fetch(market='1001', date='20201123')
+    # _df = KrxChangeListed().fetch('STK', '20201123', '20201124')
     print(_df)
     # print(_df)

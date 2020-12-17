@@ -1,0 +1,2 @@
+class ManualUploader:
+    pass

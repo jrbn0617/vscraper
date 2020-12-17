@@ -1,6 +1,7 @@
 import sqlalchemy
 from sqlalchemy import types
 import json
+import numpy as np
 
 __all__ = [
     'SafeInteger',
@@ -20,6 +21,9 @@ class SafeInteger(types.TypeDecorator):
         return int(value)
 
     def process_bind_param(self, value, dialect):
+        if value is None:
+            return 'NULL'
+
         return int(value)
 
     def process_result_value(self, value, dialect):
@@ -37,6 +41,9 @@ class SafeFloat(types.TypeDecorator):
         return float(round(value, 10))
 
     def process_bind_param(self, value, dialect):
+        if value is None:
+            return 'NULL'
+
         return float(round(value, 10))
 
     def process_result_value(self, value, dialect):

@@ -26,6 +26,7 @@ kkk = 0
 # 한국표준산업분류10차(대분류) - kr_ind_1 - VARCHAR(100)
 # 한국표준산업분류코드10차(대분류) - kr_ind_1_cd - CHAR(1)
 # MKF500 편입여부 - mkf500_yn - CHAR(1)
+# created_at - DATETIME
 # updated_at - DATETIME
 
 
@@ -40,6 +41,7 @@ kkk = 0
 
 # fnguide_performance_daily
 # 기준일 - std_dt - DATE
+# Symbol - stock_code - VARCHAR(10)
 # dividend_yield_ratio - float
 # per - float
 # pbr - float
@@ -49,8 +51,9 @@ kkk = 0
 # updated_at - DATETIME
 
 
-# fnguide_performance
+# fnguide_performance_period
 # 기준일 - std_dt - DATE
+# Symbol - stock_code - VARCHAR(10)
 # freq - CHAR(1)
 # roa - float
 # roe - float

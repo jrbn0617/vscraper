@@ -42,7 +42,7 @@ class SafeFloat(types.TypeDecorator):
 
     def process_bind_param(self, value, dialect):
         if value is None:
-            return 'NULL'
+            return None
 
         return float(round(value, 10))
 

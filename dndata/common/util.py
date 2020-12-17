@@ -1,4 +1,3 @@
-from flask import Response
 import json
 import decimal
 import datetime
@@ -31,6 +30,7 @@ def _json_serializer(value):
 
 
 def api_response_json(data, status=200):
+    from flask import Response
     """
     json 형식으로 api 응답
     :param data: (dict)

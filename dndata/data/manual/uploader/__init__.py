@@ -6,7 +6,7 @@ from dndata.common.util import db_big_update
 
 class DBUploadInterfaceManual:
     @property
-    def filenames(self):
+    def file_info(self):
         return NotImplementedError
 
     @property
@@ -23,10 +23,13 @@ class DBUploadInterfaceManual:
 
     def read_file(self):
         data_dict = {}
-        for x in self.filenames:
-            df = pd.read_excel(f'{ROOT_DIR}/resource/{x}', sheet_name=0, header=5)
+        for x in self.file_info:
+            filename = x['name']
+            df = pd.read_excel(f'{ROOT_DIR}/resource/{filename}',
+                               sheet_name=x['sheet_name'],
+                               header=x['header'])
             df = df.where(pd.notnull(df), None)
-            data_dict[x] = df
+            data_dict[filename] = df
 
         return data_dict
 

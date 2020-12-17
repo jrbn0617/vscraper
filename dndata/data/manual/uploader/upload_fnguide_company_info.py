@@ -1,14 +1,18 @@
 from dndata.common.types import *
 from dndata.data.manual.uploader import DBUploadInterfaceManual
-import pandas as pd
-import numpy as np
 import sqlalchemy
 
 
 class UploadCompanyInfo(DBUploadInterfaceManual):
     @property
-    def filenames(self):
-        return ['company.xlsx']
+    def file_info(self):
+        return [
+            {
+                'name': 'company.xlsx',
+                'header': 5,
+                'sheet_name': 0
+            }
+        ]
 
     @property
     def tablename(self):
@@ -108,7 +112,7 @@ class UploadCompanyInfo(DBUploadInterfaceManual):
         }
 
     def cleansing(self, data_dict):
-        filename = self.filenames[0]
+        filename = self.file_info[0]['name']
         data_df = data_dict[filename]
         data_df = data_df[list(self.bind_info.keys())]
         return data_df.rename(columns=lambda l: self.bind_info[l]['name'])

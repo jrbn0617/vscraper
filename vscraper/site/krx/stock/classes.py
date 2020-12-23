@@ -139,39 +139,67 @@ class KrxHoliday(KrxFinderScraper):
         return pd.DataFrame(result['block1'])
 
 
-class KrxAdjPrice(KrxFinderScraper):
+class KrxSupervisedIssues(KrxExcelScraper):
     @property
     def bld(self):
-        return "MKD/13/1302/13020102/mkd13020102"
+        return "MKD/04/0403/04030100/mkd04030100"
 
-    def fetch(self, market, fromdate, todate):
-        """80037 전체종목 등락률 (수정종가로 비교)
-        :param market  : 조회 시장 (STK/KSQ/ALL)
-        :param fromdate: 조회 시작 일자 (YYMMDD)
-        :param todate  : 조회 마지막 일자 (YYMMDD)
-        :return        : 등락률 DataFrame
-                     end_dd_end_pr fluc_tp_cd  isu_cd       isu_tr_amt    isu_tr_vl kor_shrt_isu_nm opn_dd_end_pr prv_dd_cmpr updn_rate
-        0           11,250          2  000020   16,851,737,550    1,510,666            동화약품        11,550        -300      -2.6
-        1           15,400          2  000030  181,243,425,100   11,623,346            우리은행        16,050        -650     -4.05
-        2              717          1  000040    6,506,765,090    9,521,456           KR모터스           667          50       7.5
-        3           14,200          2  000050    7,608,850,250      526,376              경방        14,900        -700      -4.7
-        4           20,350          2  000060   22,498,470,632    1,094,745           메리츠화재        20,950        -600     -2.86
-        5          116,500          1  000070   30,956,512,000      270,219           삼양홀딩스       111,000       5,500      4.95
-        6           56,300          1  000075      502,884,700        9,140          삼양홀딩스우        53,300       3,000      5.63
+    def fetch(self, market="ALL", fromdate="", todate=""):
+        """상장 폐지 종목
+        :param market: 조회 시장 (STK/KSQ/ALL)
+        :param fromdate: 검색 시작일
+        :param todate: 검색 종료일
+        :return: 종목 검색 결과 DataFrame
         """
-        result = self.post(ind_tp=market, adj_stkprc="Y", period_strt_dd=fromdate,
-                           period_end_dd=todate)
-        return pd.DataFrame(result['block1'])
+        if fromdate == "":
+            fromdate = f'{pd.Timestamp.today().year}0101'
+
+        if todate == "":
+            todate = f'{pd.Timestamp.today().year}1231'
+
+        result = self.post(gubun=market, fromdate=fromdate, todate=todate)
+        return pd.read_excel(result, dtype=str)
 
 
 if __name__ == '__main__':
     pd.set_option('display.max_columns', 500)
     pd.set_option('display.width', 1000)
 
+    import time
+
     # _df = KrxListedDetail().fetch('STK', date='20201016')
-    _df = KrxAdjPrice().fetch('STK', '20201001', '20201124')
-    # _df = KrxListedBase().fetch(market='1001', date='20201124')
+    # _df = KrxAdjPrice().fetch('STK', '20201001', '20201124')
+    # _df = KrxListedBase().fetch(market='1001', date='20130304')
     # _df2 = KrxListedBase().fetch(market='1001', date='20201123')
-    # _df = KrxChangeListed().fetch('STK', '20201123', '20201124')
-    print(_df)
-    # print(_df)
+    # _df = KrxChangeListed().fetch(fromdate='19991228', todate='20201222')
+    # _df = KrxDeListed().fetch(fromdate='19991228', todate='20201222')
+    # _df = KrxListedRange().fetch('19991223', '20201124', 'KR7026930008')
+    # _df = KrxListedRange().fetch('19991223', '20201124', 'KR7005930003')
+    # _df = KrxSupervisedIssues().fetch('STK', '20100101', '20110101')
+
+    # 1001 - 코스피
+    # 2001 - 코스닥
+    _df = KrxListedBase().fetch(stock_type='0', date='19991228')
+    _df['date'] = '19991228'
+    _df.to_csv(f'200001.csv', mode='a', encoding='utf-8-sig', header=False)
+
+    # for x in pd.date_range(pd.Timestamp('20000101'), pd.Timestamp('20201222'), freq='M'):
+    for x in pd.date_range(pd.Timestamp('20061101'), pd.Timestamp('20201222'), freq='M'):
+        month_start = x.strftime('%Y%m01')
+        month_end = x
+        filename = x.strftime('%Y%m')
+
+        for y in pd.date_range(month_start, month_end):
+            if y.dayofweek in [5, 6]:
+                continue
+
+            print(y)
+
+            _df = KrxListedBase().fetch(stock_type='0', date=y.strftime('%Y%m%d'))
+            if _df.empty:
+                time.sleep(1)
+                continue
+
+            _df['date'] = y.strftime('%Y%m%d')
+            _df.to_csv(f'{filename}.csv', mode='a', encoding='utf-8-sig', header=False)
+            time.sleep(1)

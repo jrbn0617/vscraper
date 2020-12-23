@@ -1,4 +1,4 @@
-from vscraper.common.requests import RequestGet, RequestPost
+from vscraper.common.requests import RequestGet, RequestPost, proxy_pool
 from abc import abstractmethod
 import io
 
@@ -10,7 +10,14 @@ class KrxMarketOtp(RequestGet):
 
 
 class KrxFinderScraper(RequestPost):
+    resp = None
+
     def post(self, **params):
+        # proxy = next(proxy_pool)
+        # otp = KrxMarketOtp().read(proxy=proxy, name="form", bld=self.bld)
+        # params.update({"code": otp.text})
+        # resp = super().read(proxy=proxy, **params)
+
         otp = KrxMarketOtp().read(name="form", bld=self.bld)
         params.update({"code": otp.text})
         resp = super().read(**params)
@@ -37,8 +44,13 @@ class KrxFinderScraper(RequestPost):
 
 class KrxExcelScraper(RequestPost):
     def post(self, **params):
+        # proxy = next(proxy_pool)
+        # otp = KrxMarketOtp().read(proxy=proxy, name="fileDown", filetype="xls", url=self.bld, **params)
+        # resp = super().read(proxy=proxy, code=otp.text)
+
         otp = KrxMarketOtp().read(name="fileDown", filetype="xls", url=self.bld, **params)
         resp = super().read(code=otp.text)
+
         return io.BytesIO(resp.content)
 
     @property
@@ -71,6 +83,12 @@ class ShortOtp(RequestGet):
 
 class SrtWebIo(RequestPost):
     def post(self, **params):
+        # proxy = next(proxy_pool)
+        # otp = KrxMarketOtp().read(proxy=proxy,
+        #                           name="form", bld=self.bld)
+        # params.update({"code": otp.text})
+        # resp = super().read(proxy=proxy, **params)
+
         otp = KrxMarketOtp().read(name="form", bld=self.bld)
         params.update({"code": otp.text})
         resp = super().read(**params)

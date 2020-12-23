@@ -169,7 +169,8 @@ if __name__ == '__main__':
 
     # _df = KrxListedDetail().fetch('STK', date='20201016')
     # _df = KrxAdjPrice().fetch('STK', '20201001', '20201124')
-    # _df = KrxListedBase().fetch(market='1001', date='20130304')
+    _df = KrxListedBase().fetch(stock_type='0', date='20130304')
+    kkk = 0
     # _df2 = KrxListedBase().fetch(market='1001', date='20201123')
     # _df = KrxChangeListed().fetch(fromdate='19991228', todate='20201222')
     # _df = KrxDeListed().fetch(fromdate='19991228', todate='20201222')
@@ -179,9 +180,9 @@ if __name__ == '__main__':
 
     # 1001 - 코스피
     # 2001 - 코스닥
-    _df = KrxListedBase().fetch(stock_type='0', date='19991228')
-    _df['date'] = '19991228'
-    _df.to_csv(f'200001.csv', mode='a', encoding='utf-8-sig', header=False)
+    # _df = KrxListedBase().fetch(stock_type='0', date='19991228')
+    # _df['date'] = '19991228'
+    # _df.to_csv(f'200001.csv', mode='a', encoding='utf-8-sig', header=False)
 
     # for x in pd.date_range(pd.Timestamp('20000101'), pd.Timestamp('20201222'), freq='M'):
     for x in pd.date_range(pd.Timestamp('20061101'), pd.Timestamp('20201222'), freq='M'):
@@ -195,11 +196,18 @@ if __name__ == '__main__':
 
             print(y)
 
-            _df = KrxListedBase().fetch(stock_type='0', date=y.strftime('%Y%m%d'))
-            if _df.empty:
-                time.sleep(1)
-                continue
+            for _ in range(5):
+                try:
+                    _df = KrxListedBase().fetch(stock_type='0', date=y.strftime('%Y%m%d'))
+                    if _df.empty:
+                        break
 
-            _df['date'] = y.strftime('%Y%m%d')
-            _df.to_csv(f'{filename}.csv', mode='a', encoding='utf-8-sig', header=False)
-            time.sleep(1)
+                    _df['date'] = y.strftime('%Y%m%d')
+                    _df.to_csv(f'{filename}.csv', mode='a', encoding='utf-8-sig', header=False)
+                    print('success')
+                    break
+                except:
+                    print('pass')
+                    continue
+
+

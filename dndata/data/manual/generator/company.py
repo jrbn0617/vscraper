@@ -70,8 +70,7 @@ def merge_change_listed_and_delisted():
     kkk = 0
 
 
-def merge_krx_basic(key):
-    # columns:
+def get_refined_krx_basic(key):
     df = pd.read_csv(f'{RESOURCE_DIR}/krx_basic/{key}.csv', header=None, index_col=0)
 
     df.columns = ['종목코드', '종목명', '현재가', '대비', '등락률(%)', '매도호가', '매수호가', '거래량(주)', '거래대금(원)', '시가',
@@ -80,18 +79,26 @@ def merge_krx_basic(key):
     df = df.rename(columns={
         '종목코드': 'symbol', '종목명': 'name', '현재가': 'closing_pr', '대비': 'change_pr', '등락률(%)': 'return',
         '매도호가': 'ask', '매수호가': 'bid', '거래량(주)': 'volume', '거래대금(원)': 'trading_val', '시가': 'open_pr',
-        '고가': 'high_pr', '저가': 'low_pr', '액면가': 'face_val', '통화구분': 'currency', '상장주식수(주)': 'issued_sh' ,
+        '고가': 'high_pr', '저가': 'low_pr', '액면가': 'face_val', '통화구분': 'currency', '상장주식수(주)': 'issued_sh',
         '상장시가총액(원)': 'market_cap', '날짜': 'trading_dt'
     })
 
     df['symbol'] = df['symbol'].map(lambda l: f'A{l:06d}')
 
-    # df['trading_dt'] = pd.to_datetime(df['trading_dt'].astype(str))
+    return df
+
+
+# krx 파일을 column 별로 나눠서 csv 로 저장. (이미 저장되어있다면 아래쪽에 붙임)
+def merge_krx_basic(key, code_list, header=False):
+    df = get_refined_krx_basic(key)
+
     int_items = ['closing_pr', 'change_pr', 'ask', 'bid', 'volume', 'trading_val', 'open_pr', 'high_pr', 'low_pr',
                  'face_val', 'issued_sh', 'market_cap']
 
     for x in int_items:
         df[x] = df[x].fillna('0').str.replace(',', '').astype(np.int64)
+
+    df['return'] = 0
 
     float_items = ['return']
     for x in float_items:
@@ -101,7 +108,30 @@ def merge_krx_basic(key):
 
     for x in df.columns[1:-1]:
         temp_df = df.pivot(index='trading_dt', columns='symbol', values=x)
-        temp_df.to_csv(f'{RESOURCE_DIR}/krx_output/krx_{x}.csv', encoding='utf-8-sig', mode='a')
+        temp_df = temp_df.reindex(columns=code_list)
+        temp_df.to_csv(f'{RESOURCE_DIR}/krx_output/krx_{x}.csv', encoding='utf-8-sig', mode='a', header=header)
+
+
+# krx csv 데이터에서 전체 code list 를 파일로 저장
+def krx_make_code_list_file():
+    code_list = []
+    for x in pd.date_range('20000101', '20061101', freq='M'):
+        year_month = x.strftime('%Y%m')
+        _df = get_refined_krx_basic(year_month)
+        code_list = list(set(code_list + _df['symbol'].values.tolist()))
+
+    code_list = list(sorted(code_list))
+    with open('code_list.txt', 'w') as fp:
+        fp.write(','.join(code_list))
+
+
+# 전체 코드리스트 파일에서 읽어옴
+def krx_load_all_code_list():
+    with open('code_list.txt', 'r') as fp:
+        code_list = fp.read()
+        code_list = code_list.split(',')
+    return code_list
+
 
 # * Symbol: symbol
 # * Ticker: ticker
@@ -113,6 +143,7 @@ def merge_krx_basic(key):
 # 변경일: changed_dt
 # 폐지일: delisted_dt
 # 변경사유 (종목명변경, 시장이전, 발생주식증감, 액면가변경 등.): changed_reason
+#        종목명변경: krx, 시장이전, 발생주식증감, 액면가변경: data guide
 # 발행주식수: issued_sh (issued shares)
 # 액면가: face_val (face value)
 # * 최소매매단위: min_unit (minimum trading units)
@@ -123,7 +154,107 @@ def merge_krx_basic(key):
 
 # symbol name isin market
 
+# 값이 달라진 항목을 걸러낸다 (일자, 항목, to)
+def filter_krx_item():
+    face_df = pd.read_csv(f'{RESOURCE_DIR}/krx_output/krx_face_val.csv', index_col=0, dtype=object)
+    face_df.index = face_df.index.astype(str)
+    name_df = pd.read_csv(f'{RESOURCE_DIR}/krx_output/krx_name.csv', index_col=0, dtype=object)
+    name_df.index = name_df.index.astype(str)
+    currency_df = pd.read_csv(f'{RESOURCE_DIR}/krx_output/krx_currency.csv', index_col=0, dtype=object)
+    currency_df.index = currency_df.index.astype(str)
+    issued_sh_df = pd.read_csv(f'{RESOURCE_DIR}/krx_output/krx_issued_sh.csv', index_col=0, dtype=object)
+    issued_sh_df.index = issued_sh_df.index.astype(str)
+
+    df = pd.DataFrame(columns=['trading_dt', 'symbol', 'value', 'item'])
+
+    def _append_item(_sr, _name, _container_df):
+        _sr = _sr[_sr.values != _sr.shift(1).values].dropna()
+        _df = _sr.to_frame().stack().reset_index()
+        _df['item'] = _name
+        _df.columns = ['trading_dt', 'symbol', 'value', 'item']
+        _container_df = _container_df.append(_df, ignore_index=True)
+        return _container_df
+
+    for x in face_df.columns:
+        df = _append_item(face_df[x], 'face_val', df)
+        df = _append_item(name_df[x], 'name', df)
+        df = _append_item(currency_df[x], 'currency', df)
+        df = _append_item(issued_sh_df[x], 'issued_sh', df)
+
+    df = df.pivot(index=['trading_dt', 'symbol'], columns='item', values='value').sort_index(level=1).ffill()
+    df.reset_index().to_csv('filter_result.csv', encoding='utf-8-sig')
+
+    kkk = 0
+
+
+def cleansing_data_guide_company():
+    face_df = pd.read_csv(f'{RESOURCE_DIR}/dg_basic/face_value.csv', index_col=0, dtype=object)
+    face_df = face_df.fillna(0).astype(str).apply(lambda l: l.str.replace(',', ''))
+    face_df.to_csv(f'{RESOURCE_DIR}/dg_output/face_value.csv', encoding='utf-8-sig')
+
+    issued_sh_df = pd.read_csv(f'{RESOURCE_DIR}/dg_basic/issued_shares.csv', index_col=0, dtype=object)
+    issued_sh_df = issued_sh_df.fillna(0).astype(str).apply(lambda l: l.str.replace(',', ''))
+    issued_sh_df.to_csv(f'{RESOURCE_DIR}/dg_output/issued_shares.csv', encoding='utf-8-sig')
+
+
+def filter_data_guide_item():
+    face_df = pd.read_csv(f'{RESOURCE_DIR}/dg_output/face_value.csv', dtype=object)
+    issued_sh_df = pd.read_csv(f'{RESOURCE_DIR}/dg_output/issued_shares.csv', dtype=object)
+
+    face_df = face_df.set_index('Unnamed: 0').astype(int).sort_index(axis=1)
+    face_df.index = pd.to_datetime(face_df.index).strftime('%Y%m%d')
+
+    issued_sh_df = issued_sh_df.set_index('Unnamed: 0').astype(int).sort_index(axis=1)
+    issued_sh_df.index = pd.to_datetime(issued_sh_df.index).strftime('%Y%m%d')
+
+    df = pd.DataFrame(columns=['trading_dt', 'symbol', 'value', 'item'])
+
+    def _append_item(_sr, _name, _container_df):
+        _sr = _sr[_sr.values != _sr.shift(1).values].dropna()
+        _df = _sr.to_frame().stack().reset_index()
+        _df['item'] = _name
+        _df.columns = ['trading_dt', 'symbol', 'value', 'item']
+        _container_df = _container_df.append(_df, ignore_index=True)
+        return _container_df
+
+    for i, x in enumerate(face_df.columns):
+        print(i)
+        df = _append_item(face_df[x], 'face_val', df)
+        df = _append_item(issued_sh_df[x], 'issued_sh', df)
+
+    df = df.pivot(index=['trading_dt', 'symbol'], columns='item', values='value').sort_index(level=1).ffill()
+    df = df.reset_index()
+
+    # 상장되지않은 상태인 데이터 제거
+    drop_indexes = df.reset_index().query('face_val == 0 and issued_sh == 0 and trading_dt == "19991228"').index
+    df = df.drop(drop_indexes)
+
+    df.reset_index().to_csv(f'{RESOURCE_DIR}/dg_output/filter_result.csv', encoding='utf-8-sig', index=False)
+
+
 if __name__ == '__main__':
     # cleansing_company_raw_data()
     # merge_change_listed_and_delisted()
-    merge_krx_basic(200001)
+
+    # 코드리스트를 만든다
+    # krx_make_code_list_file()
+
+    # 파일을 나눈다
+    # _code_list = krx_load_all_code_list()
+    # merge_krx_basic('200001', _code_list, header=True)
+    #
+    # for _x in pd.date_range('20000201', '20061101', freq='M'):
+    #     _year_month = _x.strftime('%Y%m')
+    #     print(_year_month)
+    #     merge_krx_basic(_year_month, _code_list)
+
+    # 값이 달라진 항목을 걸러낸다 (액면가, 회사명, 통화, 상장주식수)
+    # filter_krx_item()
+
+    # 값이 달라진 항목을 걸러낸다 (액면가, 상장주식수)
+    # cleansing_data_guide_company()
+    filter_data_guide_item()
+
+
+# 가능한 종목 기초데이터 적재
+# 종목별 루프 돌면서 기존 적재된 데이터와 다를 시 changed_reason 에 기록

@@ -36,8 +36,8 @@ class UploadTrading(DBUploadInterfaceManual):
                 'name': 'stock_code',
                 'bind_type': sqlalchemy.String
             },
-            'adjusted_price': {
-                'name': 'adjusted_price',
+            'adj_close': {
+                'name': 'adj_close',
                 'bind_type': SafeFloat
             },
             'vol_52w': {
@@ -65,7 +65,7 @@ class UploadTrading(DBUploadInterfaceManual):
         df = df.reset_index()
 
         # 순서주의!
-        df.columns = ['std_dt', 'stock_code', 'adjusted_price', 'vol_52w']
+        df.columns = ['std_dt', 'stock_code', 'adj_close', 'vol_52w']
         df['std_dt'] = df['std_dt'].dt.strftime('%Y%m%d')
 
         return df

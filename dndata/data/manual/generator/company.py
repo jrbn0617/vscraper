@@ -70,8 +70,8 @@ def merge_change_listed_and_delisted():
     kkk = 0
 
 
-def get_refined_krx_basic(key):
-    df = pd.read_csv(f'{RESOURCE_DIR}/krx_basic/{key}.csv', header=None, index_col=0)
+def get_refined_krx_daily(key):
+    df = pd.read_csv(f'{RESOURCE_DIR}/krx_daily/{key}.csv', header=None, index_col=0)
 
     df.columns = ['종목코드', '종목명', '현재가', '대비', '등락률(%)', '매도호가', '매수호가', '거래량(주)', '거래대금(원)', '시가',
                   '고가', '저가', '액면가', '통화구분', '상장주식수(주)', '상장시가총액(원)', '날짜']
@@ -89,14 +89,19 @@ def get_refined_krx_basic(key):
 
 
 # krx 파일을 column 별로 나눠서 csv 로 저장. (이미 저장되어있다면 아래쪽에 붙임)
-def merge_krx_basic(key, code_list, header=False):
-    df = get_refined_krx_basic(key)
+def merge_krx_daily(key, code_list, header=False):
+    df = get_refined_krx_daily(key)
 
     int_items = ['closing_pr', 'change_pr', 'ask', 'bid', 'volume', 'trading_val', 'open_pr', 'high_pr', 'low_pr',
-                 'face_val', 'issued_sh', 'market_cap']
+                 'issued_sh', 'market_cap']
+
+    float_items = ['face_val']
 
     for x in int_items:
         df[x] = df[x].fillna('0').str.replace(',', '').astype(np.int64)
+
+    for x in float_items:
+        df[x] = df[x].fillna('0.0').str.replace(',', '').astype(np.float)
 
     df['return'] = 0
 
@@ -115,44 +120,44 @@ def merge_krx_basic(key, code_list, header=False):
 # krx csv 데이터에서 전체 code list 를 파일로 저장
 def krx_make_code_list_file():
     code_list = []
-    for x in pd.date_range('20000101', '20061101', freq='M'):
+    for x in pd.date_range('20000101', '20210101', freq='M'):
         year_month = x.strftime('%Y%m')
-        _df = get_refined_krx_basic(year_month)
+        _df = get_refined_krx_daily(year_month)
         code_list = list(set(code_list + _df['symbol'].values.tolist()))
 
     code_list = list(sorted(code_list))
-    with open('code_list.txt', 'w') as fp:
+    with open(f'{RESOURCE_DIR}/krx_output/code_list.txt', 'w') as fp:
         fp.write(','.join(code_list))
 
 
 # 전체 코드리스트 파일에서 읽어옴
 def krx_load_all_code_list():
-    with open('code_list.txt', 'r') as fp:
+    with open(f'{RESOURCE_DIR}/krx_output/code_list.txt', 'r') as fp:
         code_list = fp.read()
         code_list = code_list.split(',')
     return code_list
 
 
-# * Symbol: symbol
-# * Ticker: ticker
-# * ISIN: isin
-# * 종목명: name
-# * 종목명(영문): name_en
-# * 최초상장일: init_listed_dt (initial listing date)
-# 상장일: listed_dt
-# 변경일: changed_dt
-# 폐지일: delisted_dt
-# 변경사유 (종목명변경, 시장이전, 발생주식증감, 액면가변경 등.): changed_reason
-#        종목명변경: krx, 시장이전, 발생주식증감, 액면가변경: data guide
-# 발행주식수: issued_sh (issued shares)
-# 액면가: face_val (face value)
-# * 최소매매단위: min_unit (minimum trading units)
-# * 매매단위: trd_unit (trading units)
-# 시장 (KOSPI, KOSDAQ 등): market
-# 국가 (KOREA): country
-# 통화 (KRW): currency
+def filter_krx_change(item_name, dtype):
+    out_file_name = f'changed_{item_name}.csv'
+    krx_df = pd.read_csv(f'{RESOURCE_DIR}/krx_output/krx_{item_name}.csv', index_col=0, dtype=object)
+    krx_df.index = krx_df.index.astype(dtype)
+    df = pd.DataFrame(columns=['std_dt', 'symbol', 'value', 'item'])
 
-# symbol name isin market
+    def _append_item(_sr, _name, _container_df):
+        _sr = _sr[_sr.values != _sr.shift(1).values].dropna()
+        _df = _sr.to_frame().stack().reset_index()
+        _df['item'] = _name
+        _df.columns = ['trading_dt', 'symbol', 'value', 'item']
+        _container_df = _container_df.append(_df, ignore_index=True)
+        return _container_df
+
+    for x in krx_df.columns:
+        df = _append_item(krx_df[x], item_name, df)
+
+    df = df.pivot(index=['trading_dt', 'symbol'], columns='item', values='value').sort_index(level=1).ffill()
+    df.reset_index().to_csv(f'{RESOURCE_DIR}/krx_result/{out_file_name}', encoding='utf-8-sig')
+
 
 # 값이 달라진 항목을 걸러낸다 (일자, 항목, to)
 def filter_krx_item():
@@ -233,6 +238,7 @@ def filter_data_guide_item():
 
 
 if __name__ == '__main__':
+    pass
     # cleansing_company_raw_data()
     # merge_change_listed_and_delisted()
 
@@ -241,20 +247,52 @@ if __name__ == '__main__':
 
     # 파일을 나눈다
     # _code_list = krx_load_all_code_list()
-    # merge_krx_basic('200001', _code_list, header=True)
+    # merge_krx_daily('200001', _code_list, header=True)
     #
-    # for _x in pd.date_range('20000201', '20061101', freq='M'):
+    # for _x in pd.date_range('20000201', '20210101', freq='M'):
     #     _year_month = _x.strftime('%Y%m')
     #     print(_year_month)
-    #     merge_krx_basic(_year_month, _code_list)
+    #     merge_krx_daily(_year_month, _code_list)
 
-    # 값이 달라진 항목을 걸러낸다 (액면가, 회사명, 통화, 상장주식수)
-    # filter_krx_item()
+    # * Symbol: symbol
+    # * Ticker: ticker
+    # * ISIN: isin
+    # * 최초상장일: init_listed_dt (initial listing date)
+    # 종목명: name
+    # - 상장일: listed_dt
+    # 변경일: changed_dt
+    # - 폐지일: delisted_dt
+    # 변경사유 (종목명변경, 시장이전, 발생주식증감, 액면가변경 등.): changed_reason
+    #        종목명변경: krx, 시장이전, 발생주식증감, 액면가변경: data guide
+    # 발행주식수: issued_sh (issued shares)
+    # 액면가: face_val (face value)
+    # 시장 (KOSPI, KOSDAQ 등): market
+    # 통화 (KRW): currency
+    # * 최소매매단위: min_unit (minimum trading units)
+    # * 매매단위: trd_unit (trading units)
+
+    # 값이 달라진 항목을 걸러낸다 (dataguide company list)
+    # 종목명 (krx_name.csv)
+    # 발행주식수 (issued_sh.csv)
+    # 액면가 (krx_face_val.csv)
+    # 통화 (krx_currency.csv)
+
+    # 시장 (dataguide/market.csv)
+    # 상장폐지일 (dataguide/market.csv)
+    # 상장일 (target)
+
+
+    # 국가
+    #
+
+    # filter_krx_change('name', str)
+    # filter_krx_change('issued_sh', np.int64)
+    # filter_krx_change('face_val', float)
+    # filter_krx_change('currency', str)
 
     # 값이 달라진 항목을 걸러낸다 (액면가, 상장주식수)
     # cleansing_data_guide_company()
-    filter_data_guide_item()
-
+    # filter_data_guide_item()
 
 # 가능한 종목 기초데이터 적재
 # 종목별 루프 돌면서 기존 적재된 데이터와 다를 시 changed_reason 에 기록

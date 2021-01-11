@@ -20,7 +20,7 @@ def cleansing_company_raw_data():
         '국가'
     ]]
 
-    df = df.rename(columns={'Symbol': 'symbol',
+    df = df.rename(columns={'Symbol': 'ticker',
                             'Name': 'name',
                             '국제표준코드': 'isin',
                             'Ticker': 'ticker',
@@ -77,13 +77,13 @@ def get_refined_krx_daily(key):
                   '고가', '저가', '액면가', '통화구분', '상장주식수(주)', '상장시가총액(원)', '날짜']
 
     df = df.rename(columns={
-        '종목코드': 'symbol', '종목명': 'name', '현재가': 'closing_pr', '대비': 'change_pr', '등락률(%)': 'return',
+        '종목코드': 'ticker', '종목명': 'name', '현재가': 'closing_pr', '대비': 'change_pr', '등락률(%)': 'return',
         '매도호가': 'ask', '매수호가': 'bid', '거래량(주)': 'volume', '거래대금(원)': 'trading_val', '시가': 'open_pr',
         '고가': 'high_pr', '저가': 'low_pr', '액면가': 'face_val', '통화구분': 'currency', '상장주식수(주)': 'issued_sh',
         '상장시가총액(원)': 'market_cap', '날짜': 'std_dt'
     })
 
-    df['symbol'] = df['symbol'].map(lambda l: f'A{l:06d}')
+    df['ticker'] = df['ticker'].map(lambda l: f'A{l:06d}')
 
     return df
 
@@ -112,7 +112,7 @@ def merge_krx_daily(key, code_list, header=False):
     df['currency'] = df['currency'].str.replace('[^A-Za-z]', '')
 
     for x in df.columns[1:-1]:
-        temp_df = df.pivot(index='std_dt', columns='symbol', values=x)
+        temp_df = df.pivot(index='std_dt', columns='ticker', values=x)
         temp_df = temp_df.reindex(columns=code_list)
         temp_df.to_csv(f'{RESOURCE_DIR}/krx_output/krx_{x}.csv', encoding='utf-8-sig', mode='a', header=header)
 
@@ -123,7 +123,7 @@ def krx_make_code_list_file():
     for x in pd.date_range('20000101', '20210101', freq='M'):
         year_month = x.strftime('%Y%m')
         _df = get_refined_krx_daily(year_month)
-        code_list = list(set(code_list + _df['symbol'].values.tolist()))
+        code_list = list(set(code_list + _df['ticker'].values.tolist()))
 
     code_list = list(sorted(code_list))
     with open(f'{RESOURCE_DIR}/krx_output/code_list.txt', 'w') as fp:
@@ -151,13 +151,13 @@ def filter_change(base_file_path, item_name, dtype):
     else:
         raise
 
-    df = pd.DataFrame(columns=['std_dt', 'symbol', 'value', 'item'])
+    df = pd.DataFrame(columns=['std_dt', 'ticker', 'value', 'item'])
 
     def _append_item(_sr, _name, _container_df):
         _sr = _sr[_sr.values != _sr.shift(1).values].dropna()
         _df = _sr.to_frame().stack().reset_index()
         _df['item'] = _name
-        _df.columns = ['std_dt', 'symbol', 'value', 'item']
+        _df.columns = ['std_dt', 'ticker', 'value', 'item']
         _container_df = _container_df.append(_df, ignore_index=True)
         return _container_df
 
@@ -171,15 +171,15 @@ def filter_change(base_file_path, item_name, dtype):
     else:
         df['std_dt'] = pd.to_datetime(df['std_dt']).dt.strftime('%Y%m%d')
 
-    df = df.pivot(index=['std_dt', 'symbol'], columns='item', values='value').sort_index(level=1).ffill()
+    df = df.pivot(index=['std_dt', 'ticker'], columns='item', values='value').sort_index(level=1).ffill()
     df.reset_index().to_csv(f'{RESOURCE_DIR}/result/{out_file_name}', encoding='utf-8-sig')
 
 
 def filter_change_delisted(base_file_path):
     out_file_name = f'changed_delisted.csv'
     csv_df = pd.read_csv(base_file_path, index_col=0, dtype=object)
-    csv_df = csv_df.rename(columns={'isu_cd': 'symbol', 'chg_dt': 'std_dt', 'tr_stp_rsn': 'value'})
-    csv_df = csv_df[['std_dt', 'symbol', 'value']]
+    csv_df = csv_df.rename(columns={'isu_cd': 'ticker', 'chg_dt': 'std_dt', 'tr_stp_rsn': 'value'})
+    csv_df = csv_df[['std_dt', 'ticker', 'value']]
 
     csv_df = csv_df[~csv_df.apply(lambda l: '이전상장' in l['value'], axis=1)]
     csv_df = csv_df[~csv_df.apply(lambda l: '유가증권' in l['value'], axis=1)]
@@ -187,7 +187,7 @@ def filter_change_delisted(base_file_path):
 
     csv_df['std_dt'] = pd.to_datetime(csv_df['std_dt'])
     csv_df['std_dt'] = csv_df['std_dt'].dt.strftime('%Y%m%d')
-    csv_df = csv_df.set_index(['std_dt', 'symbol'])
+    csv_df = csv_df.set_index(['std_dt', 'ticker'])
 
     csv_df.reset_index().to_csv(f'{RESOURCE_DIR}/result/{out_file_name}', encoding='utf-8-sig')
 
@@ -203,13 +203,13 @@ def filter_krx_item():
     issued_sh_df = pd.read_csv(f'{RESOURCE_DIR}/krx_output/krx_issued_sh.csv', index_col=0, dtype=object)
     issued_sh_df.index = issued_sh_df.index.astype(str)
 
-    df = pd.DataFrame(columns=['std_dt', 'symbol', 'value', 'item'])
+    df = pd.DataFrame(columns=['std_dt', 'ticker', 'value', 'item'])
 
     def _append_item(_sr, _name, _container_df):
         _sr = _sr[_sr.values != _sr.shift(1).values].dropna()
         _df = _sr.to_frame().stack().reset_index()
         _df['item'] = _name
-        _df.columns = ['std_dt', 'symbol', 'value', 'item']
+        _df.columns = ['std_dt', 'ticker', 'value', 'item']
         _container_df = _container_df.append(_df, ignore_index=True)
         return _container_df
 
@@ -219,7 +219,7 @@ def filter_krx_item():
         df = _append_item(currency_df[x], 'currency', df)
         df = _append_item(issued_sh_df[x], 'issued_sh', df)
 
-    df = df.pivot(index=['std_dt', 'symbol'], columns='item', values='value').sort_index(level=1).ffill()
+    df = df.pivot(index=['std_dt', 'ticker'], columns='item', values='value').sort_index(level=1).ffill()
     df.reset_index().to_csv('filter_result.csv', encoding='utf-8-sig')
 
 
@@ -233,13 +233,13 @@ def filter_data_guide_item():
     issued_sh_df = issued_sh_df.set_index('Unnamed: 0').astype(int).sort_index(axis=1)
     issued_sh_df.index = pd.to_datetime(issued_sh_df.index).strftime('%Y%m%d')
 
-    df = pd.DataFrame(columns=['std_dt', 'symbol', 'value', 'item'])
+    df = pd.DataFrame(columns=['std_dt', 'ticker', 'value', 'item'])
 
     def _append_item(_sr, _name, _container_df):
         _sr = _sr[_sr.values != _sr.shift(1).values].dropna()
         _df = _sr.to_frame().stack().reset_index()
         _df['item'] = _name
-        _df.columns = ['std_dt', 'symbol', 'value', 'item']
+        _df.columns = ['std_dt', 'ticker', 'value', 'item']
         _container_df = _container_df.append(_df, ignore_index=True)
         return _container_df
 
@@ -248,7 +248,7 @@ def filter_data_guide_item():
         df = _append_item(face_df[x], 'face_val', df)
         df = _append_item(issued_sh_df[x], 'issued_sh', df)
 
-    df = df.pivot(index=['std_dt', 'symbol'], columns='item', values='value').sort_index(level=1).ffill()
+    df = df.pivot(index=['std_dt', 'ticker'], columns='item', values='value').sort_index(level=1).ffill()
     df = df.reset_index()
 
     # 상장되지않은 상태인 데이터 제거
@@ -269,7 +269,7 @@ def cleansing_data_guide_company():
 
 
 def generate_complete_company_data():
-    # symbol
+    # ticker
     # isin
     # name
     # init_listed_dt
@@ -305,7 +305,7 @@ if __name__ == '__main__':
     #     print(_year_month)
     #     merge_krx_daily(_year_month, _code_list)
 
-    # * Symbol: symbol
+    # * Symbol: ticker
     # * Ticker: ticker
     # * ISIN: isin
     # * 최초상장일: init_listed_dt (initial listing date)

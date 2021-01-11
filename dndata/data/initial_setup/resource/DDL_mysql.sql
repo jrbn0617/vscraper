@@ -13,6 +13,8 @@ create table operation
     face_value     float                              null comment '액면가',
     market         varchar(20)                        null comment '시장 (KOSPI, KOSDAQ ...)',
     currency       varchar(10)                        null comment '통화 (KRW, USD ...)',
+    kospi100_yn    char(1)                            null comment 'KOSPI100 종목에 포함되는지 여부 (Y/N)',
+    kospi200_yn    char(1)                            null comment 'KOSPI200 종목에 포함되는지 여부 (Y/N)',
     min_order      float    default '1'               null comment '최저 매수 주문금액 (통화)',
     trading_unit   float    default '1'               null comment '최소 매매 단위 (주)',
     created_at     datetime default CURRENT_TIMESTAMP null,

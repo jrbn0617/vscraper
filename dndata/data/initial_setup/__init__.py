@@ -41,20 +41,56 @@ def setup_tables():
             session.update(stmt)
 
 
+def apply_changed_listed(operation_df):
+    operation_df = operation_df.copy()
+    drop_market = ['K-OTC', 'KONEX']
+    valid_market = ['KOSDAQ', 'KOSPI']
+    active_market = operation_df.iloc[0]['market']
+    active_market_start_date = operation_df.index[0]
+    active_market_end_date = ''
+
+    drop_item_list = []
+    for s, e in zip(operation_df.index[:-1], operation_df.index[1:]):
+        a_market = operation_df.loc[s, 'market']
+        b_market = operation_df.loc[e, 'market']
+
+        if active_market != b_market:
+            if active_market_start_date != operation_df.index[0]:
+                active_market_start_date = active_market_end_date
+
+            active_market_end_date = s
+            active_market = b_market
+
+        if a_market in drop_market and b_market in valid_market:
+            # drop -> valid
+            drop_item_list += operation_df.loc[active_market_start_date:active_market_end_date].index.tolist()
+            operation_df.loc[e, 'changed_reason'] = '[이전상장]'
+            operation_df.loc[e, 'listed_dt'] = e
+            operation_df.loc[e, 'delisted_dt'] = np.nan
+
+        elif b_market in drop_market and a_market in valid_market:
+            # valid -> drop
+            raise
+
+    operation_df = operation_df.drop(drop_item_list)
+
+    return operation_df
+
+
 def insert_kr_stock_operation():
     # container 생성
     column_order = [
         'dn_id',
         'ticker',
         'isin',
-        'company_name',
         'init_listed_dt',
         'listed_dt',
         'changed_dt',
         'end_dt',
         'delisted_dt',
         'changed_reason',
-        'issued_shares',
+        'company_name',
+        # 'issued_shares',
         'face_value',
         'market',
         'currency',
@@ -135,6 +171,13 @@ def insert_kr_stock_operation():
             _delisted = _init_listed_dt.copy().rename(columns={'init_listed_dt': 'delisted_dt'})
             _delisted['delisted_dt'] = np.nan
 
+        # 이전상장
+        _market = _get_data('market', _ticker)
+        _market['market'] = _market['market'].str.replace('KSE', 'KOSPI')
+        _market['changed_reason'] = np.nan
+        _diff_prev('market', _market, '[이전상장]')
+        _market = _market[_market['market'].isin(['KOSPI', 'KOSDAQ'])]
+
         # 종목명
         _company_name = _get_data('company_name', _ticker)
         _company_name['changed_reason'] = np.nan
@@ -154,22 +197,30 @@ def insert_kr_stock_operation():
             _listed_dt.index = [_company_name.index[0]]
             _listed_dt.loc[_company_name.index[0], 'listed_dt'] = _company_name.index[0]
 
-        # 이전상장
-        _market = _get_data('market', _ticker)
-        _market['market'] = _market['market'].str.replace('KSE', 'KOSPI')
-        _market['changed_reason'] = np.nan
-        _diff_prev('market', _market, '[이전상장]')
+        # _market = _market[_market.index.map(lambda l: l >= _init_listed_dt.index[0]).values]
 
         # 액면가
         _face_value = _get_data('face_value', _ticker)
         _face_value['changed_reason'] = np.nan
 
         # 발행주식수
-        _issued_shares = _get_data('issued_shares', _ticker)
-        _issued_shares['issued_shares'][_issued_shares['issued_shares'] == '0'] = np.nan
-        _issued_shares['changed_reason'] = np.nan
+        # _issued_shares = _get_data('issued_shares', _ticker)
+        # _issued_shares['issued_shares'][_issued_shares['issued_shares'] == '0'] = np.nan
+        # _issued_shares['changed_reason'] = np.nan
+        # _issued_shares = _issued_shares.dropna(how='all')
 
-        _diff_simple('issued_shares', _issued_shares, '[발행주식수변동]')
+        # 발행주식수가 상장폐지 이후에 기록되는경우를 merge 한다
+        # for x in _delisted.index:
+        #     range_e = (pd.Timestamp(x) + pd.DateOffset(weeks=1)).strftime('%Y%m%d')
+        #     merge_item = _issued_shares.index[_issued_shares.index.map(lambda l: x < l < range_e)]
+        #     if len(merge_item) < 1:
+        #         continue
+        #
+        #     merge_item = merge_item[0]
+        #     _issued_shares = _issued_shares.rename(index={merge_item: x})
+        #     _issued_shares = _issued_shares.reset_index().drop_duplicates('std_dt', keep='last').set_index('std_dt')
+
+        # _diff_simple('issued_shares', _issued_shares, '[발행주식수변동]')
 
         _diff_simple('face_value', _face_value, '[액면가변동]')
 
@@ -181,7 +232,7 @@ def insert_kr_stock_operation():
 
         if not _delisted.dropna(how='all').empty:
             for x in _delisted.index:
-                _temp = _market.index[_market.index > x]
+                _temp = _market.index[_market.index >= x]
                 if len(_temp) < 1:
                     continue
 
@@ -194,18 +245,19 @@ def insert_kr_stock_operation():
             _init_listed_dt,
             _listed_dt,
             _delisted,
-            _company_name,
             _market,
+            _company_name,
             _face_value,
-            _issued_shares,
+            # _issued_shares,
             _currency
         ], axis=1)
 
         # 데이터 오류 수정. 최초상장일 이전날짜의 데이터는 최초 상장일로 날짜변경
         _temp_dt = _init_listed_dt['init_listed_dt'][0]
+        _op_df.index = _op_df.index.rename('std_dt')
         _op_df = _op_df.reset_index()
-        _op_df['index'] = _op_df['index'].mask(_op_df['index'] < _temp_dt, _temp_dt)
-        _op_df = _op_df.set_index('index')
+        _op_df['std_dt'] = _op_df['std_dt'].mask(_op_df['std_dt'] < _temp_dt, _temp_dt)
+        _op_df = _op_df.set_index('std_dt')
 
         # 중복되어있는 changed_reason column 정리
         _op_df = _op_df.groupby(_op_df.columns, axis=1).first().sort_index()
@@ -231,12 +283,12 @@ def insert_kr_stock_operation():
                 _op_df.index = index
 
         _op_df = _op_df.groupby(_op_df.index.values).ffill().reset_index().drop_duplicates(
-            subset='index', keep='last').set_index('index')
-
-        # 맨처음 market data 가 비어있을경우 아래껄로 채움
-        if pd.isnull(_op_df.iloc[0]['market']):
-            _op_df.iloc[0]['market'] = _op_df.iloc[1]['market']
-            _op_df.iloc[1]['market'] = np.nan
+            subset='std_dt', keep='last').set_index('std_dt')
+        #
+        # # 맨처음 market data 가 비어있을경우 아래껄로 채움
+        # if pd.isnull(_op_df.iloc[0]['market']):
+        #     _op_df.iloc[0]['market'] = _op_df.iloc[1]['market']
+        #     _op_df.iloc[1]['market'] = np.nan
 
         _op_df = _op_df.dropna(how='all')
 
@@ -256,7 +308,39 @@ def insert_kr_stock_operation():
         _op_df['ticker'] = _ticker
         _op_df['dn_id'] = _ticker_to_dnid(_ticker)
 
-        return _op_df[column_order]
+        _op_df = _op_df[column_order]
+
+        # 상장폐지종목 isin, company_name, init_listed_dt, listed_dt, market, currency 가 비어있는데 채운다.
+        _delisted = _delisted.dropna(how='all')
+
+        for _x, _sr in _delisted.iterrows():
+            _loc = _op_df.index.get_loc(_x)
+            _prev_sr = _op_df.iloc[_loc - 1]
+            _op_df.loc[_x, 'isin'] = _prev_sr['isin']
+            _op_df.loc[_x, 'company_name'] = _prev_sr['company_name']
+            _op_df.loc[_x, 'init_listed_dt'] = _prev_sr['init_listed_dt']
+            _op_df.loc[_x, 'listed_dt'] = _prev_sr['listed_dt']
+            _op_df.loc[_x, 'face_value'] = _prev_sr['face_value']
+
+            # 이전상장의 경우 pass
+            if pd.isnull(_op_df.loc[_x, 'market']) or _prev_sr['market'] == _op_df.loc[_x, 'market']:
+                _op_df.loc[_x, 'market'] = _prev_sr['market']
+
+            _op_df.loc[_x, 'currency'] = _prev_sr['currency']
+
+        # KONEX 나 K-OTC 로 최초 상장된 종목의 정보는 지워준다.
+        if pd.isnull(_op_df.iloc[0]['market']):
+            _op_df = _op_df[~(pd.isnull(_op_df['market']) & pd.isnull(_op_df['delisted_dt']))]
+
+            # 첫번째 데이터 정보를 수정한다.
+            if _op_df.index[0] > '20000104':
+                init_listed = _op_df.index[0]
+                _op_df['init_listed_dt'] = init_listed
+                _op_df.loc[init_listed, 'delisted_dt'] = np.nan
+                _op_df.loc[init_listed, 'listed_dt'] = init_listed
+                _op_df.loc[init_listed, 'changed_reason'] = ''
+
+        return _op_df
 
     history_dict = OrderedDict()
 
@@ -275,81 +359,6 @@ def insert_kr_stock_operation():
             v.to_csv(csv_file_path, encoding='utf-8-sig', mode='w', index=False)
         else:
             v.to_csv(csv_file_path, encoding='utf-8-sig', mode='a', index=False, header=False)
-
-    # 종목별로 순회하면서 데이터를 채운다
-
-
-def insert_kr_stock_operation_():
-    # dn_id          varchar(20)                        not null comment '자산 고유 ID(변하지않음)',
-    # ticker         varchar(20)                        not null comment '자산 ticker',
-    # isin           varchar(20)                        not null comment '국제표준코드',
-    # asset_name     varchar(100)                       not null comment '자산 이름',
-    # init_listed_dt date                               not null comment '최초 상장일 (최초 등록일)',
-    # listed_dt      date                               not null comment '상장일 (등록일)',
-    # changed_dt     date                               not null comment '데이터 변경일',
-    # delisted_dt    date                               null comment '상장폐지일',
-    # changed_reason varchar(500)                       null comment '데이터 변경 사유',
-    # issued_shares  bigint                             null comment '발행주수',
-    # face_value     float                              null comment '액면가',
-    # market         varchar(20)                        null comment '시장 (KOSPI, KOSDAQ ...)',
-    # currency       varchar(10)                        null comment '통화 (KRW, USD ...)',
-    # min_order      float    default '1'               null comment '최저 매수 주문금액 (통화)',
-    # trading_unit   float    default '1'               null comment '최소 매매 단위 (주)',
-    # created_at     datetime default CURRENT_TIMESTAMP null,
-    # updated_at     datetime default CURRENT_TIMESTAMP null,
-
-    def _ticker_to_dnid(_sr):
-        return _sr.apply(lambda l: 'SKR-' + l)
-
-    # isin code 를 기준으로 universe 구성
-    operation_df = pd.read_csv('./resource/isin.csv', index_col=0)
-    operation_df = operation_df.reset_index()
-    operation_df.columns = ['ticker', 'isin']
-    # dn_id 는 앞에 SKR- 를 붙여준다. (S = Stock, KR = 대한민국)
-    operation_df['dn_id'] = _ticker_to_dnid(operation_df['ticker'])
-
-    # 추가할 데이터 형태를 잡아준다
-    operation_df['asset_name'] = None
-    operation_df['listed_dt'] = None
-    operation_df['changed_dt'] = None
-    operation_df['delisted_dt'] = None
-    operation_df['changed_reason'] = None
-    operation_df['issued_shares'] = None
-    operation_df['face_value'] = None
-    operation_df['market'] = None
-    operation_df['currency'] = None
-
-    # 최초 상장일 추가
-    temp_df = pd.read_csv('./resource/initial_listed_date.csv')
-    temp_df.columns = ['ticker', 'init_listed_dt']
-    temp_df = temp_df.dropna()
-    temp_df['init_listed_dt'] = temp_df['init_listed_dt'].astype(int).astype(str)
-
-    operation_df = operation_df.merge(temp_df.dropna(), on='ticker', how='left')
-
-    # 최초 상장일이 없는 종목 제거
-    operation_df = operation_df.loc[operation_df['init_listed_dt'].dropna().index]
-
-    # # 최초 상장일이 데이터 시작일보다 큰경우 처리
-    # temp_df = operation_df.query('init_listed_dt > changed_dt')
-    # operation_df.loc[temp_df.index, 'changed_dt'] = operation_df.loc[temp_df.index, 'init_listed_dt']
-
-    # 상장폐지 history 적용
-    temp_df = pd.read_csv('resource/delisted.csv', index_col=0)
-
-    for _, sr in temp_df.iterrows():
-        _df = operation_df.query(f'ticker == "{sr["symbol"]}"')
-
-        # 해당 종목이 없으면 pass
-        if _df.empty:
-            continue
-
-        _sr = _df.sort_values('changed_dt').iloc[-1]
-
-        # operation_df.query(f'symbol == @sr["symbol"]')
-        kkk = 0
-
-    kkk = 0
 
 
 if __name__ == '__main__':

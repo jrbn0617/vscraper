@@ -7,6 +7,7 @@ __all__ = [
     'SafeInteger',
     'SafeJSON',
     'SafeFloat',
+    'SafeBigInt'
 ]
 
 
@@ -21,8 +22,28 @@ class SafeInteger(types.TypeDecorator):
         return int(value)
 
     def process_bind_param(self, value, dialect):
-        if value is None:
-            return 'NULL'
+        if value is None or np.isnan(value):
+            return None
+
+        return int(value)
+
+    def process_result_value(self, value, dialect):
+        return int(value)
+
+
+class SafeBigInt(types.TypeDecorator):
+    impl = types.BigInteger
+
+    @property
+    def python_type(self):
+        return int
+
+    def process_literal_param(self, value, dialect):
+        return int(value)
+
+    def process_bind_param(self, value, dialect):
+        if value is None or np.isnan(value):
+            return None
 
         return int(value)
 
@@ -41,7 +62,7 @@ class SafeFloat(types.TypeDecorator):
         return float(round(value, 10))
 
     def process_bind_param(self, value, dialect):
-        if value is None:
+        if value is None or np.isnan(value):
             return None
 
         return float(round(value, 10))

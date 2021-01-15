@@ -110,7 +110,7 @@ item_info = {
 
 if __name__ == '__main__':
     from dndata.common.dbsession import DBAdaptor, session_scope
-
+    # 123
     uri = 'postgresql://stock-richgo:N41HG7Z0x3EU0PVdY!Os@money-tracer.ct84xmdqlguj.ap-northeast-2.rds.amazonaws.com:5432/stock-richgo'
     adaptor = DBAdaptor(uri)
 
